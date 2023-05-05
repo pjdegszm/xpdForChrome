@@ -1866,7 +1866,45 @@ var currentMap = null;
 var keyupmap = {};
 var keydownmap = {};
 var keyupIgnoreMap = {}; /* keyCode ベース */
-var globalKeymap = xpd.globalKeymap = new Keymap();
+// wanno-
+class Keymap2 {
+  constructor(name) {
+    this.name = name || "";
+    this.bindings = new Map();
+    this.subMaps = new Map();
+  }
+
+  define(keyCombination, action) {
+    this.bindings.set(keyCombination, action);
+  }
+
+  remove(keyCombination) {
+    this.bindings.delete(keyCombination);
+  }
+
+  execute(keyCombination, ...args) {
+    const action = this.bindings.get(keyCombination);
+    if (action) {
+      action(...args);
+      return true;
+    }
+    return false;
+  }
+
+  makeSubKeymap(name) {
+    let subMap = this.subMaps.get(name);
+    if (!subMap) {
+      subMap = new Keymap2(name);
+      this.subMaps.set(name, subMap);
+    }
+    return subMap;
+  }
+}
+
+//var globalKeymap = xpd.globalKeymap = new Keymap();
+const globalKeymap = xpd.globalKeymap = new Keymap2();
+
+
 var keymap = xpd.keymap = new Keymap(null, globalKeymap);
 var macOptionKeymap = {
   229: 97, /* a */
@@ -3840,7 +3878,8 @@ function checkLatestVersion() {
   xhr.send();
 }
 // --- Aggressive Keybind Mode ---
-var systemCommandMap = new Keymap("C-x");
+// wanno-
+//var systemCommandMap = new Keymap("C-x");
 xpd.pref.aggressiveKeybindMode = true;
 function _aggressiveKeybindMode(on) {
   var k = systemCommandMap.name;
@@ -3851,7 +3890,7 @@ var aggressiveKeybindMode = defineMode(_aggressiveKeybindMode, "AK");
 // --- Keymap Definition ---
 
 // wanno-
-/* original
+/*
 function initializeKeymap() {
   keymap.define("SPC", completeCommand);
   keymap.define("C-i", completeForTabCommand);
@@ -3909,41 +3948,73 @@ function initializeKeymap() {
 }
 */
 
-class Keymap2 {
-  constructor() {
-    this.bindings = new Map();
-  }
 
-  define(keyCombination, action) {
-    this.bindings.set(keyCombination, action);
+Keymap.prototype.execute = function (keyCombination, ...args) {
+  const action = this.table[keyCombination];
+  if (action) {
+    action(...args);
+    return true;
   }
-
-  execute(keyCombination, ...args) {
-    const action = this.bindings.get(keyCombination);
-    if (action) {
-      action(...args);
-      return true;
-    }
-    return false;
-  }
-}
+  return false;
+};
 
 const keymap3 = new Keymap2();
+const systemCommandMap = new Keymap2("C-x");
 
 function initializeKeymap() {
   keymap3.define("SPC", completeCommand);
-  keymap3.define("C-I", completeForTabCommand);
-  keymap3.define("C-N", nextLine);
-  keymap3.define("C-P", previousLine);
-  keymap3.define("A-K", killLine);
-  keymap3.define("A-F", forwardTextbox);
-  keymap3.define("A-B", backwardTextbox);
-  keymap3.define("A-T", transposeMoves);
-  keymap3.define("C-O", switchBlock);
-  keymap3.define("A-A", beginningOfLine);
-  keymap3.define("C-J", beginningOfNextLine);
-  keymap3.define("C-S-I", completeForTabCommand2);
+  keymap3.define("C-i", completeForTabCommand);
+  keymap3.define("C-n", nextLine);
+  keymap3.define("C-p", previousLine);
+  keymap3.define("A-k", killLine);
+  keymap3.define("A-f", forwardTextbox);
+  keymap3.define("A-b", backwardTextbox);
+  keymap3.define("A-t", transposeMoves);
+  keymap3.define("C-o", switchBlock);
+  keymap3.define("A-a", beginningOfLine);
+  keymap3.define("C-j", beginningOfNextLine);
+  keymap3.define("C-S-i", completeForTabCommand2);
   keymap3.define("@", markSwapingCheckbox);
+
+  globalKeymap.define("C-,", previousBuffer);
+  globalKeymap.define("C-.", nextBuffer);
+
+  var globalSetLevelMap = globalKeymap.makeSubKeymap("C-l");
+  globalSetLevelMap.define("C-t", toggleLevelAll);
+
+  var setLevelMap = keymap.makeSubKeymap("C-l", globalSetLevelMap);
+  var setLevelAllMap = globalSetLevelMap.makeSubKeymap("C-a");
+  for (var i = 0; i < 10; i++) {
+    setLevelMap.define(i, setLevel);
+    setLevelAllMap.define(i, setLevelAll);
+  }
+  setLevelMap.define("-", setLevelFromPrompt);
+  setLevelAllMap.define("-", setLevelAllFromPrompt);
+
+  globalKeymap.define("A-x", displayMinibuffer);
+  globalKeymap.define("C-g", quitCommand);
+
+  keymap3.define("C-m", executeCommand);
+  keymap3.define("RET", executeCommand);
+
+  keymap3.define("C-s", displaySpeedTable);
+  globalKeymap.define("C-s", globalDisplaySpeedTable);
+
+  systemCommandMap.define("C-s", save);
+  systemCommandMap.define("C-c", quit);
+  systemCommandMap.define("C-k", clearAll);
+  systemCommandMap.define("C-n", newParty);
+  systemCommandMap.define("C-w", writeParty);
+  systemCommandMap.define("C-u", unfocus);
+  systemCommandMap.define("C-f", findParty);
+  systemCommandMap.define("C-v", findAlternateParty);
+  systemCommandMap.define("C-d", listParties);
+  systemCommandMap.define("b", switchToBuffer);
+  systemCommandMap.define("C-b", listBuffers);
+  systemCommandMap.define("k", killCurrentBuffer);
+  systemCommandMap.define("C-r", revert);
+  systemCommandMap.define("i", importPD);
+  systemCommandMap.define("e", exportPD);
 }
 
 
@@ -3958,12 +4029,17 @@ window.addEventListener('keydown', function (event) {
   if (isAlt) keyCombination += 'A-';
   if (isShift) keyCombination += 'S-';
 
-  keyCombination += event.key.toUpperCase();
+  keyCombination += event.key;
 
-  if (keymap3.execute(keyCombination, event)) {
-      event.preventDefault();
+  if (
+    keymap3.execute(keyCombination, event) ||
+    globalKeymap.execute(keyCombination, event) ||
+    systemCommandMap.execute(keyCombination, event)
+  ) {
+    event.preventDefault();
   }
 });
+
 
 // --- Initialize ---
 xpd.pref.formSizeEconomyMode = true;
